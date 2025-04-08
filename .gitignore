@@ -1,0 +1,18 @@
+# node_modules – katalog zależności
+node_modules/
+
+# Ewentualne pliki robocze
+npm-debug.log
+yarn-error.log
+
+# Pliki środowiskowe, np. z hasłami (o ile takie masz)
+.env
+
+# Foldery wynikowe (np. build, dist)
+build/
+dist/
+
+# Jakieś inne cache, temp itp.
+.cache/
+
+
