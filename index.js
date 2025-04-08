@@ -5,7 +5,7 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: '*' } 
+  cors: { origin: '*' }
 });
 
 const PORT = process.env.PORT || 3001;
@@ -26,20 +26,31 @@ function determineWinner(move1, move2) {
   return ["lose", "win"];
 }
 
-
 io.on('connection', (socket) => {
   console.log('Nowe połączenie:', socket.id);
 
-  
   socket.on('joinRoom', (roomId) => {
+  
+    const room = io.sockets.adapter.rooms.get(roomId);
+    if (room && room.size >= 2) {
+      console.log(`Pokój ${roomId} jest pełen – gracz ${socket.id} nie może dołączyć.`);
+      socket.emit('roomFull', { message: 'Pokój jest już pełen' });
+      return; 
+    }
+    
+
     socket.join(roomId);
     console.log(`Gracz ${socket.id} dołączył do pokoju ${roomId}`);
-
     
+   
     if (!roomMoves[roomId]) {
       roomMoves[roomId] = {};
     }
+    
+    
+    socket.emit('joinSuccess', { roomId });
   });
+  
 
   
   socket.on('move', ({ roomId, move }) => {
@@ -50,15 +61,12 @@ io.on('connection', (socket) => {
     }
     roomMoves[roomId][socket.id] = move;
 
-    
     const playersInRoom = Object.keys(roomMoves[roomId]);
     if (playersInRoom.length >= 2) {
-      
       const [player1Id, player2Id] = playersInRoom;
       const move1 = roomMoves[roomId][player1Id];
       const move2 = roomMoves[roomId][player2Id];
 
-      
       const [result1, result2] = determineWinner(move1, move2);
       console.log(`Wynik w pokoju ${roomId}: ${player1Id} (${move1}) vs ${player2Id} (${move2}) => ${result1} / ${result2}`);
 
@@ -74,7 +82,7 @@ io.on('connection', (socket) => {
         result: result2
       });
 
-      
+     
       delete roomMoves[roomId][player1Id];
       delete roomMoves[roomId][player2Id];
     }
@@ -83,7 +91,6 @@ io.on('connection', (socket) => {
   
   socket.on('disconnect', () => {
     console.log('Rozłączono:', socket.id);
-    
     for (const roomId in roomMoves) {
       if (roomMoves[roomId][socket.id]) {
         delete roomMoves[roomId][socket.id];
@@ -91,7 +98,6 @@ io.on('connection', (socket) => {
     }
   });
 });
-
 
 app.get('/', (req, res) => {
   res.send('Serwer z socket.io dla gry Rock-Paper-Scissors działa!');
