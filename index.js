@@ -5,14 +5,15 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: '*' }
+  cors: { 
+    origin: ['https://rps-front-liart.vercel.app', 'http://localhost:5173']
+  }
 });
 
 const PORT = process.env.PORT || 3001;
-
+const FRONTEND_URL = 'https://rps-front-liart.vercel.app';
 
 const roomMoves = {};
-
 
 function determineWinner(move1, move2) {
   if (move1 === move2) return ["tie", "tie"];
@@ -26,36 +27,52 @@ function determineWinner(move1, move2) {
   return ["lose", "win"];
 }
 
+function generateRoomId() {
+  return Math.random().toString(36).substr(2, 6);
+}
+
 io.on('connection', (socket) => {
   console.log('Nowe połączenie:', socket.id);
 
-  socket.on('joinRoom', (roomId) => {
-  
-    const room = io.sockets.adapter.rooms.get(roomId);
-    if (room && room.size >= 2) {
-      console.log(`Pokój ${roomId} jest pełen – gracz ${socket.id} nie może dołączyć.`);
-      socket.emit('roomFull', { message: 'Pokój jest już pełen' });
-      return; 
-    }
-    
-
+  socket.on('createRoom', () => {
+    const roomId = generateRoomId();
     socket.join(roomId);
-    console.log(`Gracz ${socket.id} dołączył do pokoju ${roomId}`);
+    console.log(`Gracz ${socket.id} stworzył pokój ${roomId}`);
     
-   
     if (!roomMoves[roomId]) {
       roomMoves[roomId] = {};
     }
     
+    const roomLink = `${FRONTEND_URL}/game/${roomId}`;
     
-    socket.emit('joinSuccess', { roomId });
+    socket.emit('roomCreated', { roomId, link: roomLink });
   });
-  
 
-  
+  socket.on('joinRoom', (roomId) => {
+    const room = io.sockets.adapter.rooms.get(roomId);
+    if (room && room.size >= 2) {
+      console.log(`Pokój ${roomId} jest pełen – gracz ${socket.id} nie może dołączyć.`);
+      socket.emit('roomFull', { message: 'Pokój jest już pełen' });
+      return;
+    }
+
+    socket.join(roomId);
+    console.log(`Gracz ${socket.id} dołączył do pokoju ${roomId}`);
+
+    if (!roomMoves[roomId]) {
+      roomMoves[roomId] = {};
+    }
+
+    socket.emit('joinSuccess', { roomId });
+
+    if (io.sockets.adapter.rooms.get(roomId).size === 2) {
+      io.to(roomId).emit('bothPlayersJoined');
+    }
+  });
+
   socket.on('move', ({ roomId, move }) => {
     console.log(`Gracz ${socket.id} w pokoju ${roomId} wykonał ruch: ${move}`);
-
+    
     if (!roomMoves[roomId]) {
       roomMoves[roomId] = {};
     }
@@ -68,9 +85,7 @@ io.on('connection', (socket) => {
       const move2 = roomMoves[roomId][player2Id];
 
       const [result1, result2] = determineWinner(move1, move2);
-      console.log(`Wynik w pokoju ${roomId}: ${player1Id} (${move1}) vs ${player2Id} (${move2}) => ${result1} / ${result2}`);
 
-      
       io.to(player1Id).emit('result', {
         yourMove: move1,
         opponentMove: move2,
@@ -82,13 +97,11 @@ io.on('connection', (socket) => {
         result: result2
       });
 
-     
       delete roomMoves[roomId][player1Id];
       delete roomMoves[roomId][player2Id];
     }
   });
 
-  
   socket.on('disconnect', () => {
     console.log('Rozłączono:', socket.id);
     for (const roomId in roomMoves) {
