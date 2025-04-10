@@ -1,3 +1,4 @@
+// index.js
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -76,7 +77,11 @@ io.on('connection', (socket) => {
     if (!roomMoves[roomId]) {
       roomMoves[roomId] = {};
     }
+
     roomMoves[roomId][socket.id] = move;
+
+    // 💡 NOWOŚĆ: poinformuj przeciwnika, że gracz wykonał ruch
+    socket.to(roomId).emit('opponentMoved');
 
     const playersInRoom = Object.keys(roomMoves[roomId]);
     if (playersInRoom.length >= 2) {
