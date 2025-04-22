@@ -1,4 +1,3 @@
-// index.js
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -7,12 +6,14 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { 
-    origin: ['https://rps-front-liart.vercel.app', 'http://localhost:5173','https://rps-back.onrender.com' ]
+    // Ograniczamy CORS tylko do lokalnego frontendu
+    origin: ['http://localhost:5173']
   }
 });
 
 const PORT = process.env.PORT || 3001;
-const FRONTEND_URL = 'https://rps-front-liart.vercel.app';
+// Zmieniamy URL frontendu na localhost
+const FRONTEND_URL = 'http://localhost:5173';
 
 const roomMoves = {};
 
@@ -44,7 +45,7 @@ io.on('connection', (socket) => {
       roomMoves[roomId] = {};
     }
     
-    const roomLink = `${FRONTEND_URL}/game/${roomId}`;
+    const roomLink = `${FRONTEND_URL}/waiting-room/${roomId}`;
     
     socket.emit('roomCreated', { roomId, link: roomLink });
   });
@@ -67,6 +68,7 @@ io.on('connection', (socket) => {
     socket.emit('joinSuccess', { roomId });
 
     if (io.sockets.adapter.rooms.get(roomId).size === 2) {
+      console.log(`Pokój ${roomId} jest pełen. Wysyłanie sygnału bothPlayersJoined`);
       io.to(roomId).emit('bothPlayersJoined');
     }
   });
@@ -80,38 +82,69 @@ io.on('connection', (socket) => {
 
     roomMoves[roomId][socket.id] = move;
 
-    // 💡 NOWOŚĆ: poinformuj przeciwnika, że gracz wykonał ruch
+    // Powiadom przeciwnika o ruchu
     socket.to(roomId).emit('opponentMoved');
+    console.log(`Wysłano opponentMoved do przeciwnika w pokoju ${roomId}`);
 
+    // Sprawdź czy obaj gracze wykonali ruch
     const playersInRoom = Object.keys(roomMoves[roomId]);
     if (playersInRoom.length >= 2) {
       const [player1Id, player2Id] = playersInRoom;
       const move1 = roomMoves[roomId][player1Id];
       const move2 = roomMoves[roomId][player2Id];
 
-      const [result1, result2] = determineWinner(move1, move2);
+      // Upewnij się, że obaj gracze wykonali ruch
+      if (move1 && move2) {
+        console.log(`Obaj gracze wykonali ruchy: ${player1Id}=${move1}, ${player2Id}=${move2}`);
+        const [result1, result2] = determineWinner(move1, move2);
 
-      io.to(player1Id).emit('result', {
-        yourMove: move1,
-        opponentMove: move2,
-        result: result1
-      });
-      io.to(player2Id).emit('result', {
-        yourMove: move2,
-        opponentMove: move1,
-        result: result2
-      });
+        console.log(`Wynik: ${player1Id}=${result1}, ${player2Id}=${result2}`);
+        io.to(player1Id).emit('result', {
+          yourMove: move1,
+          opponentMove: move2,
+          result: result1
+        });
+        io.to(player2Id).emit('result', {
+          yourMove: move2,
+          opponentMove: move1,
+          result: result2
+        });
 
-      delete roomMoves[roomId][player1Id];
-      delete roomMoves[roomId][player2Id];
+        // Reset ruchów w pokoju
+        delete roomMoves[roomId][player1Id];
+        delete roomMoves[roomId][player2Id];
+      }
     }
+  });
+
+  socket.on('requestRematch', ({ roomId }) => {
+    console.log(`Gracz ${socket.id} prosi o rewanż w pokoju ${roomId}`);
+    socket.to(roomId).emit('rematchRequested');
+    console.log(`Wysłano rematchRequested do przeciwnika w pokoju ${roomId}`);
+  });
+
+  socket.on('acceptRematch', ({ roomId }) => {
+    console.log(`Gracz ${socket.id} zaakceptował rewanż w pokoju ${roomId}`);
+    if (roomMoves[roomId]) roomMoves[roomId] = {};
+    io.to(roomId).emit('rematchAccepted');
+    console.log(`Wysłano rematchAccepted do obu graczy w pokoju ${roomId}`);
   });
 
   socket.on('disconnect', () => {
     console.log('Rozłączono:', socket.id);
+    
+    // Znajdź pokoje, w których był gracz
     for (const roomId in roomMoves) {
       if (roomMoves[roomId][socket.id]) {
+        console.log(`Gracz ${socket.id} opuścił pokój ${roomId}`);
         delete roomMoves[roomId][socket.id];
+      }
+      
+      // Powiadom pozostałego gracza
+      const room = io.sockets.adapter.rooms.get(roomId);
+      if (room && room.size === 1) {
+        console.log(`Wysyłanie opponentLeft do pozostałego gracza w pokoju ${roomId}`);
+        socket.to(roomId).emit('opponentLeft');
       }
     }
   });
@@ -123,4 +156,5 @@ app.get('/', (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Serwer działa na porcie ${PORT}`);
+  console.log(`Akceptuje połączenia z: http://localhost:5173`);
 });
