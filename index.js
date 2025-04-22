@@ -6,14 +6,13 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { 
-    // Ograniczamy CORS tylko do lokalnego frontendu
-    origin: ['http://localhost:5173']
+    origin: ['https://rps-front-liart.vercel.app', 'http://localhost:5173','https://rps-back.onrender.com' ]
   }
 });
 
 const PORT = process.env.PORT || 3001;
 // Zmieniamy URL frontendu na localhost
-const FRONTEND_URL = 'http://localhost:5173';
+const FRONTEND_URL = 'https://rps-front-liart.vercel.app';
 
 const roomMoves = {};
 
